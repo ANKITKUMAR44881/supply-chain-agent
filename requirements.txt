@@ -1,0 +1,6 @@
+cd path/to/your/folder
+git init
+git remote add origin https://github.com/yourusername/supply-chain-agent.git
+git add .
+git commit -m "Initial commit"
+git push -u origin master
