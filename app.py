@@ -1,18 +1,14 @@
 import streamlit as st
 import pandas as pd
 import requests
-import openai
-from openai import OpenAI
 from io import BytesIO
 import os
 from datetime import datetime
 
-# Set up OpenAI and Serper API clients
+# Secure API key retrieval
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Serper Search
+# Function to call Serper.dev for real-time web search
 def search_web(query):
     url = "https://google.serper.dev/search"
     headers = {
@@ -27,31 +23,14 @@ def search_web(query):
     else:
         return []
 
-# GPT summary based on web results
-def summarize_with_gpt(user_query, search_results):
-    context = "\n".join([f"{res['title']}: {res['snippet']}" for res in search_results])
-    prompt = f"""
-You are a supply chain assistant. A user asked: "{user_query}"
-
-Based on the following search results, generate a helpful and actionable summary:
-{context}
-
-Respond in 3-5 lines with a direct answer, not a list of sources.
-"""
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return response.choices[0].message.content
-
-# CTB logic
+# CTB calculation
 def calculate_ctb(df):
     ctb_output = df[df['Status'] == 'Active'].copy()
     ctb_output_grouped = ctb_output.groupby('Final_Product')['CTB_Quantity'].min().reset_index()
     ctb_output_grouped.rename(columns={'CTB_Quantity': 'Buildable_Units'}, inplace=True)
     return ctb_output_grouped
 
-# Stock analyzer
+# Stock analysis
 def analyze_stock(df):
     df['Stock_Status'] = df['On_Hand'].apply(lambda x: 'Out of Stock' if x <= 0 else ('Overstock' if x > 5000 else 'Normal'))
     return df[['Part_Number', 'On_Hand', 'Stock_Status']]
@@ -68,28 +47,25 @@ def generate_po_suggestions(df, target_doi=14):
 st.set_page_config(page_title="Parete - AI Supply Chain Agent", layout="wide")
 st.title("🤖 Parete - Your Supply Chain Execution Agent")
 
-# Collect user role info
+# Role collection
 with st.chat_message("assistant"):
     st.markdown("👋 Hi! What would you like help with today?")
 role = st.selectbox("Choose your role:", ["Buyer", "Sourcing Manager", "Analyst", "Startup Founder", "Other"])
 biz_type = st.radio("Your business type:", ["Retail", "Manufacturing", "Repairs"])
 category = st.radio("Product category:", ["Consumer Electronics", "AR/VR", "Mobility", "Other"])
 
-# Web search + GPT summary
-st.subheader("💬 Ask Parete (Web + GPT Summary)")
+# Web Search only
+st.subheader("💬 Ask Parete (Web Search)")
 user_query = st.text_input("What supply chain task or question do you have?")
 
 if user_query:
-    with st.spinner("Getting web insights..."):
+    with st.spinner("Searching online..."):
         search_results = search_web(user_query)
-        summary = summarize_with_gpt(user_query, search_results)
-    st.markdown("### 🤖 GPT Summary:")
-    st.success(summary)
     st.markdown("### 🌐 Top Search Results:")
     for res in search_results:
         st.markdown(f"🔹 [{res['title']}]({res['link']}): {res['snippet']}")
 
-# Excel upload for CTB
+# Excel upload
 st.header("📁 Upload your CTB Excel file")
 uploaded_file = st.file_uploader("Upload Excel (.xlsx)", type=["xlsx"])
 
