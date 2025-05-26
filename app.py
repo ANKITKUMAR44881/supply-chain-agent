@@ -2,9 +2,10 @@ import streamlit as st
 import pandas as pd
 import requests
 from io import BytesIO
+import os
 
-# Serper.dev API Key
-SERPER_API_KEY = "0b07caceb75e5c34ddd2f7eec63ddc39701e1123"
+# Secure API key retrieval
+SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 
 # Function to call Serper.dev for real-time web search
 def search_web(query):
