@@ -72,15 +72,27 @@ elif st.session_state.step == 3:
 
 elif st.session_state.step == 4:
     with st.chat_message("assistant"):
-        st.markdown(f"🔍 Perfect! You’re a **{st.session_state.role}** in **{st.session_state.business_type}** handling **{st.session_state.category}**. Please upload your Excel to get started.")
-    uploaded_file = st.file_uploader("Upload your CTB Excel file", type=["xlsx"])
-    if uploaded_file:
-        df = pd.read_excel(uploaded_file)
-        st.session_state.df = df
+        st.markdown("🔍 Before we begin, would you like to ask any supply chain question? I’ll fetch simulated insights for now.")
+    question = st.chat_input("Ask me anything (e.g., top battery suppliers in India)")
+    if question:
+        with st.chat_message("user"):
+            st.markdown(question)
+        with st.chat_message("assistant"):
+            st.markdown("**Simulated Answer:** Based on industry data and top search results, here are 3 key takeaways:\n\n- Panasonic, LG Chem, and Amara Raja are among the top lithium battery suppliers in India.\n- Typical MOQs range from 500 to 5,000 units based on form factor.\n- For AR/VR devices, custom battery design services are often bundled with volume orders.")
         st.session_state.step = 5
         st.rerun()
 
 elif st.session_state.step == 5:
+    with st.chat_message("assistant"):
+        st.markdown(f"🔍 Thanks! Now, as a **{st.session_state.role}** in **{st.session_state.business_type}** for **{st.session_state.category}**, please upload your Excel file.")
+    uploaded_file = st.file_uploader("Upload your CTB Excel file", type=["xlsx"])
+    if uploaded_file:
+        df = pd.read_excel(uploaded_file)
+        st.session_state.df = df
+        st.session_state.step = 6
+        st.rerun()
+
+elif st.session_state.step == 6:
     df = st.session_state.df
     with st.chat_message("assistant"):
         st.markdown("✅ Here's your Clear to Build Report:")
