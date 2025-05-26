@@ -1,14 +1,17 @@
 import streamlit as st
 import pandas as pd
 import requests
+import openai
 from io import BytesIO
 import os
 from datetime import datetime
 
-# Secure API key retrieval
+# Load API keys securely
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+openai.api_key = OPENAI_API_KEY
 
-# Function to call Serper.dev for real-time web search
+# Function to call Serper.dev
 def search_web(query):
     url = "https://google.serper.dev/search"
     headers = {
@@ -19,12 +22,26 @@ def search_web(query):
     response = requests.post(url, headers=headers, json=payload)
     if response.status_code == 200:
         results = response.json().get("organic", [])
-        top_results = results[:3]
-        return [
-            f"🔹 [{r.get('title')}]({r.get('link')}): {r.get('snippet')}" for r in top_results
-        ]
+        return results[:3]
     else:
-        return ["❌ Failed to fetch search results. Please try again later."]
+        return []
+
+# Summarize search results with GPT
+def summarize_with_gpt(user_query, search_results):
+    context = "\n".join([f"{res['title']}: {res['snippet']}" for res in search_results])
+    prompt = f"""
+You are a supply chain assistant. A user asked: "{user_query}"
+
+Based on the following search results, generate a helpful and actionable summary:
+{context}
+
+Respond in 3-5 lines with a direct answer, not a list of sources.
+"""
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response['choices'][0]['message']['content']
 
 # CTB calculation
 def calculate_ctb(df):
@@ -50,27 +67,30 @@ def generate_po_suggestions(df, target_doi=14):
 st.set_page_config(page_title="Parete - AI Supply Chain Agent", layout="wide")
 st.title("🤖 Parete - Your Supply Chain Execution Agent")
 
-# Introduction & user role
+# Role selection
 with st.chat_message("assistant"):
     st.markdown("👋 Hi! What would you like help with today?")
-
 role = st.selectbox("Choose your role:", ["Buyer", "Sourcing Manager", "Analyst", "Startup Founder", "Other"])
 biz_type = st.radio("Your business type:", ["Retail", "Manufacturing", "Repairs"])
 category = st.radio("Product category:", ["Consumer Electronics", "AR/VR", "Mobility", "Other"])
 
-# Supply chain question
-st.subheader("💬 Ask Parete (Web search or task help)")
-user_query = st.text_input("Describe your need (e.g. 'Generate CTB for AR headset business'):")
+# Web Search with GPT summary
+st.subheader("💬 Ask Parete (Web + GPT summary)")
+user_query = st.text_input("What supply chain task or question do you have?")
 
 if user_query:
-    with st.spinner("Searching online..."):
-        web_results = search_web(user_query)
-    st.markdown("### 🌐 Web Search Results:")
-    for res in web_results:
-        st.markdown(res, unsafe_allow_html=True)
+    with st.spinner("Getting web insights..."):
+        search_results = search_web(user_query)
+        summary = summarize_with_gpt(user_query, search_results)
+    st.markdown("### 🤖 GPT Summary:")
+    st.success(summary)
 
-# File upload section
-st.header("📁 Upload your CTB/MRP Excel file")
+    st.markdown("### 🌐 Top Search Results:")
+    for res in search_results:
+        st.markdown(f"🔹 [{res['title']}]({res['link']}): {res['snippet']}")
+
+# CTB upload
+st.header("📁 Upload your CTB Excel file")
 uploaded_file = st.file_uploader("Upload Excel (.xlsx)", type=["xlsx"])
 
 if uploaded_file:
