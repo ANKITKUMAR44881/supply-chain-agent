@@ -1,18 +1,42 @@
 import streamlit as st
 import pandas as pd
+import requests
 from io import BytesIO
 
-# Define processing functions
+# Serper.dev API Key
+SERPER_API_KEY = "0b07caceb75e5c34ddd2f7eec63ddc39701e1123"
+
+# Function to call Serper.dev for real-time web search
+def search_web(query):
+    url = "https://google.serper.dev/search"
+    headers = {
+        "X-API-KEY": SERPER_API_KEY,
+        "Content-Type": "application/json"
+    }
+    payload = {"q": query}
+    response = requests.post(url, headers=headers, json=payload)
+    if response.status_code == 200:
+        results = response.json().get("organic", [])
+        top_results = results[:3]
+        return [
+            f"🔹 [{r.get('title')}]({r.get('link')}): {r.get('snippet')}" for r in top_results
+        ]
+    else:
+        return ["❌ Failed to fetch search results. Please try again later."]
+
+# CTB calculation
 def calculate_ctb(df):
     ctb_output = df[df['Status'] == 'Active'].copy()
     ctb_output_grouped = ctb_output.groupby('Final_Product')['CTB_Quantity'].min().reset_index()
     ctb_output_grouped.rename(columns={'CTB_Quantity': 'Buildable_Units'}, inplace=True)
     return ctb_output_grouped
 
+# Stock analysis
 def analyze_stock(df):
     df['Stock_Status'] = df['On_Hand'].apply(lambda x: 'Out of Stock' if x <= 0 else ('Overstock' if x > 5000 else 'Normal'))
     return df[['Part_Number', 'On_Hand', 'Stock_Status']]
 
+# PO suggestions
 def generate_po_suggestions(df, target_doi=14):
     df = df.copy()
     df['Suggested_Order_Qty'] = (target_doi * df['Daily_Demand']) - df['On_Hand']
@@ -20,97 +44,49 @@ def generate_po_suggestions(df, target_doi=14):
     po_df = df[df['Suggested_Order_Qty'] > 0][['Part_Number', 'On_Hand', 'Daily_Demand', 'Suggested_Order_Qty']]
     return po_df
 
-# Initialize session state
-if 'step' not in st.session_state:
-    st.session_state.step = 0
-if 'role' not in st.session_state:
-    st.session_state.role = None
-if 'business_type' not in st.session_state:
-    st.session_state.business_type = None
-if 'category' not in st.session_state:
-    st.session_state.category = None
-if 'target_doi' not in st.session_state:
-    st.session_state.target_doi = 14
+# Streamlit UI
+st.title("📦 Supply Chain Agent")
 
-st.title("🤖 Supply Chain Assistant Chat")
+# Role & Type
+with st.chat_message("assistant"):
+    st.markdown("👋 Hello! What is your role?")
+role = st.selectbox("Choose your role:", ["Buyer", "Sourcing Manager", "Analyst"])
 
-if st.session_state.step == 0:
-    with st.chat_message("assistant"):
-        st.markdown("👋 Hi! I'm your smart Supply Chain Agent. First, what's your role?")
-    role = st.chat_input("Type: Buyer, Sourcing Manager, Analyst")
-    if role:
-        st.session_state.role = role.strip().title()
-        st.session_state.step = 1
-        st.rerun()
+with st.chat_message("assistant"):
+    st.markdown("🏭 What type of business are you in?")
+biz_type = st.radio("Choose one:", ["Retail", "Manufacturing"])
+category = st.radio("Product category?", ["Consumer Electronics", "Repairs"])
 
-elif st.session_state.step == 1:
-    with st.chat_message("assistant"):
-        st.markdown(f"Great, {st.session_state.role}! Is your work focused on **Retail** or **Manufacturing**?")
-    btype = st.chat_input("Type: Retail or Manufacturing")
-    if btype:
-        st.session_state.business_type = btype.strip().title()
-        st.session_state.step = 2
-        st.rerun()
+# Ask a supply chain question
+st.subheader("💬 Ask the Supply Chain Agent (real-time web search)")
+user_query = st.text_input("Type your supply chain question:")
 
-elif st.session_state.step == 2:
-    with st.chat_message("assistant"):
-        st.markdown("And are you working in **Consumer Electronics** or **Repairs**?")
-    cat = st.chat_input("Type: Consumer Electronics or Repairs")
-    if cat:
-        st.session_state.category = cat.strip().title()
-        st.session_state.step = 3
-        st.rerun()
+if user_query:
+    with st.spinner("Searching the web..."):
+        web_results = search_web(user_query)
+    st.markdown("### 🌐 Web Search Results:")
+    for res in web_results:
+        st.markdown(res, unsafe_allow_html=True)
 
-elif st.session_state.step == 3:
-    with st.chat_message("assistant"):
-        st.markdown("🎯 What is your target Days of Inventory?")
-    doi = st.chat_input("Enter a number like 14")
-    if doi and doi.isdigit():
-        st.session_state.target_doi = int(doi)
-        st.session_state.step = 4
-        st.rerun()
+# Continue with file upload
+st.header("📁 Upload your CTB Excel file")
+uploaded_file = st.file_uploader("Upload Excel", type=["xlsx"])
 
-elif st.session_state.step == 4:
-    with st.chat_message("assistant"):
-        st.markdown("🔍 Before we begin, would you like to ask any supply chain question? I’ll fetch simulated insights for now.")
-    question = st.chat_input("Ask me anything (e.g., top battery suppliers in India)")
-    if question:
-        with st.chat_message("user"):
-            st.markdown(question)
-        with st.chat_message("assistant"):
-            st.markdown("**Simulated Answer:** Based on industry data and top search results, here are 3 key takeaways:\n\n- Panasonic, LG Chem, and Amara Raja are among the top lithium battery suppliers in India.\n- Typical MOQs range from 500 to 5,000 units based on form factor.\n- For AR/VR devices, custom battery design services are often bundled with volume orders.")
-        st.session_state.step = 5
-        st.rerun()
+if uploaded_file:
+    df = pd.read_excel(uploaded_file)
 
-elif st.session_state.step == 5:
-    with st.chat_message("assistant"):
-        st.markdown(f"🔍 Thanks! Now, as a **{st.session_state.role}** in **{st.session_state.business_type}** for **{st.session_state.category}**, please upload your Excel file.")
-    uploaded_file = st.file_uploader("Upload your CTB Excel file", type=["xlsx"])
-    if uploaded_file:
-        df = pd.read_excel(uploaded_file)
-        st.session_state.df = df
-        st.session_state.step = 6
-        st.rerun()
-
-elif st.session_state.step == 6:
-    df = st.session_state.df
-    with st.chat_message("assistant"):
-        st.markdown("✅ Here's your Clear to Build Report:")
+    st.subheader("✅ Clear to Build Report")
     ctb_summary = calculate_ctb(df)
     st.dataframe(ctb_summary)
 
-    with st.chat_message("assistant"):
-        st.markdown("📊 Here's the Stock Status Analysis:")
+    st.subheader("📊 Stock Status")
     stock_df = analyze_stock(df)
     st.dataframe(stock_df)
 
-    with st.chat_message("assistant"):
-        st.markdown("📦 Generating PO Suggestions based on your DOI target...")
-    po_df = generate_po_suggestions(df, target_doi=st.session_state.target_doi)
+    st.subheader("📑 Purchase Order Suggestions")
+    po_df = generate_po_suggestions(df)
     st.dataframe(po_df)
 
     output = BytesIO()
     po_df.to_excel(output, index=False)
     st.download_button("📥 Download PO Suggestion File", data=output.getvalue(), file_name="PO_Suggestions.xlsx")
-
-    st.success("All done! Upload a new file or start over anytime.")
