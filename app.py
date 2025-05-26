@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 from io import BytesIO
 import os
+from datetime import datetime
 
 # Secure API key retrieval
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
@@ -46,32 +47,31 @@ def generate_po_suggestions(df, target_doi=14):
     return po_df
 
 # Streamlit UI
-st.title("📦 Supply Chain Agent")
+st.set_page_config(page_title="Parete - AI Supply Chain Agent", layout="wide")
+st.title("🤖 Parete - Your Supply Chain Execution Agent")
 
-# Role & Type
+# Introduction & user role
 with st.chat_message("assistant"):
-    st.markdown("👋 Hello! What is your role?")
-role = st.selectbox("Choose your role:", ["Buyer", "Sourcing Manager", "Analyst"])
+    st.markdown("👋 Hi! What would you like help with today?")
 
-with st.chat_message("assistant"):
-    st.markdown("🏭 What type of business are you in?")
-biz_type = st.radio("Choose one:", ["Retail", "Manufacturing"])
-category = st.radio("Product category?", ["Consumer Electronics", "Repairs"])
+role = st.selectbox("Choose your role:", ["Buyer", "Sourcing Manager", "Analyst", "Startup Founder", "Other"])
+biz_type = st.radio("Your business type:", ["Retail", "Manufacturing", "Repairs"])
+category = st.radio("Product category:", ["Consumer Electronics", "AR/VR", "Mobility", "Other"])
 
-# Ask a supply chain question
-st.subheader("💬 Ask the Supply Chain Agent (real-time web search)")
-user_query = st.text_input("Type your supply chain question:")
+# Supply chain question
+st.subheader("💬 Ask Parete (Web search or task help)")
+user_query = st.text_input("Describe your need (e.g. 'Generate CTB for AR headset business'):")
 
 if user_query:
-    with st.spinner("Searching the web..."):
+    with st.spinner("Searching online..."):
         web_results = search_web(user_query)
     st.markdown("### 🌐 Web Search Results:")
     for res in web_results:
         st.markdown(res, unsafe_allow_html=True)
 
-# Continue with file upload
-st.header("📁 Upload your CTB Excel file")
-uploaded_file = st.file_uploader("Upload Excel", type=["xlsx"])
+# File upload section
+st.header("📁 Upload your CTB/MRP Excel file")
+uploaded_file = st.file_uploader("Upload Excel (.xlsx)", type=["xlsx"])
 
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
@@ -88,6 +88,9 @@ if uploaded_file:
     po_df = generate_po_suggestions(df)
     st.dataframe(po_df)
 
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    output_file = f"PO_Suggestions_{timestamp}.xlsx"
     output = BytesIO()
     po_df.to_excel(output, index=False)
-    st.download_button("📥 Download PO Suggestion File", data=output.getvalue(), file_name="PO_Suggestions.xlsx")
+
+    st.download_button("📥 Download PO Suggestion File", data=output.getvalue(), file_name=output_file)
