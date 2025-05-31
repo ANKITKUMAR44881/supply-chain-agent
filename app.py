@@ -33,6 +33,43 @@ def generate_po(df, target_doi=14):
     df['Suggested_Order_Qty'] = df['Suggested_Order_Qty'].apply(lambda x: max(x, 0))
     return df[df['Suggested_Order_Qty'] > 0][['Part_Number', 'On_Hand', 'Daily_Demand', 'Suggested_Order_Qty']]
 
+# --- ASSISTANT MODE LOGIC ---
+def analyze_open_po(po_df):
+    overdue = po_df[po_df['Due_Date'] < pd.Timestamp.today()]
+    return overdue
+
+def summarize_ctb_risk(ctb_df):
+    risk_parts = ctb_df[ctb_df['Buildable_Units'] <= 0]
+    return risk_parts
+
+def draft_emails_from_overdue(overdue_df):
+    overdue_df['Due_Date'] = pd.to_datetime(overdue_df['Due_Date']).dt.date
+    grouped = overdue_df.groupby('Vendor_Name') if 'Vendor_Name' in overdue_df.columns else overdue_df.groupby('PO_Number')
+    emails = {}
+
+    for vendor, rows in grouped:
+        lines = "\n".join([
+            f"- {row['PO_Number']} | {row['Part_Number']} | Qty: {row['Quantity']} | Due: {row['Due_Date']}"
+            for _, row in rows.iterrows()
+        ])
+        email = f"""
+**To:** [Vendor Email Here]  
+**Subject:** Urgent: Overdue PO Follow-up  
+
+Dear {vendor},
+
+We noticed the following PO lines are overdue as of today:
+
+{lines}
+
+Kindly expedite shipment or provide revised delivery timelines.
+
+Regards,  
+Parete Agent
+"""
+        emails[vendor] = email.strip()
+    return emails
+
 # --- STREAMLIT PAGE ---
 st.set_page_config(page_title="Parete - AI Supply Chain Agent", layout="wide")
 st.title("🤖 Parete - Interactive Supply Chain Assistant")
@@ -53,6 +90,7 @@ role = st.selectbox("👤 What is your role?", [
 
 # --- STEP 3: TASK TYPE ---
 task = st.radio("⚙️ What do you want to do today?", [
+    "Run My Daily Supply Chain Assistant",
     "Inventory / Demand Planning",
     "Create MRP",
     "Run CTB",
@@ -63,8 +101,43 @@ task = st.radio("⚙️ What do you want to do today?", [
     "Custom Use Case"
 ])
 
-# --- STEP 4: DYNAMIC TASK LOGIC ---
-if task == "Inventory / Demand Planning" and industry == "Retail":
+# --- STEP 4: TASK ROUTING ---
+
+if task == "Run My Daily Supply Chain Assistant":
+    st.subheader("🧠 Assistant Mode - Upload Files")
+
+    po_file = st.file_uploader("Upload Open PO File (.xlsx)", type=["xlsx"], key="po")
+    ctb_file = st.file_uploader("Upload CTB File (.xlsx)", type=["xlsx"], key="ctb")
+
+    if po_file and ctb_file:
+        po_df = pd.read_excel(po_file)
+        ctb_input = pd.read_excel(ctb_file)
+
+        overdue_pos = analyze_open_po(po_df)
+        ctb_summary = generate_ctb(ctb_input)
+        ctb_risk = summarize_ctb_risk(ctb_summary)
+
+        st.success("✅ Daily Assistant Summary:")
+        st.markdown(f"- 🔴 {len(overdue_pos)} overdue PO lines")
+        st.markdown(f"- 📦 {len(ctb_risk)} final products with CTB = 0")
+        st.markdown(f"- 📈 Total CTB rows: {len(ctb_summary)}")
+
+        st.subheader("📋 CTB Summary")
+        st.dataframe(ctb_summary)
+
+        st.subheader("⚠️ Build Risk (CTB = 0)")
+        st.dataframe(ctb_risk)
+
+        st.subheader("⏰ Overdue POs")
+        st.dataframe(overdue_pos)
+
+        st.subheader("📨 Suggested Vendor Follow-up Emails")
+        emails = draft_emails_from_overdue(overdue_pos)
+        for vendor, content in emails.items():
+            st.markdown(f"**✉️ Vendor: {vendor}**")
+            st.code(content, language="markdown")
+
+elif task == "Inventory / Demand Planning" and industry == "Retail":
     st.info("Upload your forecast and stock file. Parete will generate an ARS-style planning sheet (like Zomato or Blinkit).")
 
 elif task == "Create MRP" and "Consumer Electronics" in industry:
